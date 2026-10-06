@@ -1,0 +1,38 @@
+name: tashih
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    image: tashih-api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OFFLINE_DATA_DIR: /data/hadith
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - hadith_data:/data/hadith
+    restart: unless-stopped
+    stop_grace_period: 25s
+
+  ui:
+    build:
+      context: .
+      target: ui
+    image: tashih-ui
+    environment:
+      API_BASE_URL: http://api:8000
+      API_KEY: ${UI_API_KEY:-}
+    ports:
+      - "${UI_PORT:-8501}:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  # Cache for the six-books dataset (~40 MB, downloaded on first start).
+  hadith_data:

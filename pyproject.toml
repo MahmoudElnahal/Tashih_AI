@@ -15,12 +15,11 @@ ignore = [
     "RUF001", "RUF002", "RUF003",  # Arabic text looks "ambiguous" to ruff
     "S101",                        # asserts are fine
     "B008",                        # FastAPI Depends()/Query() defaults
+    "E501",                        # line length is left to the formatter (long Arabic strings)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S", "E501"]
-"ui/*" = ["E501"]
-"app/prompts.py" = ["E501"]
+"tests/*" = ["S", "ASYNC"]
 
 [tool.mypy]
 python_version = "3.12"
