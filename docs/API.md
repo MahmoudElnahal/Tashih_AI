@@ -169,9 +169,9 @@ Values are lowercase strings. **Clients must tolerate unknown values** (treat an
 | `hasan` | حسن | green |
 | `daif` | ضعيف / ضعيف جداً | red |
 | `mawdu` | موضوع (مكذوب) | red |
-| `unclear` | يحتاج مراجعة | grey |
+| `unclear` | يحتاج مراجعة / مختلف فيه | grey |
 
-`unclear` means the text was found but the source's wording is not a recognised ruling (for
+`unclear` with `verdict_ar = "مختلف فيه"` means scholars are split (see below). Otherwise `unclear` means the text was found but the source's wording is not a recognised ruling (for
 example "غريب من هذا الوجه", "رجاله ثقات", or wording that mixes authentic and weak terms).
 The classifier is conservative on purpose.
 
@@ -181,18 +181,41 @@ The classifier is conservative on purpose.
    confident match answers; a failing source is skipped.
 2. Only matches tied at the best score are considered.
 3. **Dorar** returns one scholar's grading per result, often for different chains (طرق) of
-   the same text. All of them go into `best_match.grades`. The primary verdict is the one
-   given by the most scholars (each scholar counted once per verdict, `unclear` ignored, ties
-   broken by Dorar's order); `best_match` is the first result carrying that verdict. Set
-   `DORAR_PRIMARY_RULE=first` to use "first result with a definite verdict" instead.
-4. **Offline six books**: the primary grade is Al-Albani's when present, otherwise the first
-   grade listed. Hadith from Sahih al-Bukhari and Sahih Muslim carry no grades in the dataset
-   and are reported as `sahih` with `grade_text = "أخرجه في صحيحه"`.
+   the same text. All of them go into `best_match.grades`. A Dorar answer is then
+   cross-checked against the six-books dataset (local, no network):
+   - **The text is in Sahih al-Bukhari or Sahih Muslim** → the verdict is `sahih`,
+     `best_match` is the Bukhari/Muslim entry (`grade_text = "أخرجه في صحيحه"`,
+     `source_used = "offline_six_books"`), and Dorar's gradings stay in `grades`. If some of
+     them are negative (criticism of side chains), `scholars_differ` is true and `message_ar`
+     says so.
+   - **The text is in one of the other four books** → that book's gradings (Al-Albani and
+     others) are added to `grades` before the verdict is decided, and the entry is appended
+     to `other_matches`.
+   - Only an exact match (score ≥ 0.95) can do either; a typo-tolerant match cannot.
+4. **Scholars split** (at least one accepting grading and one rejecting grading, and the text
+   is not in al-Bukhari/Muslim) → no side is picked. `verdict_code = "unclear"`,
+   `verdict_ar = "مختلف فيه"`, `scholars_differ = true`, and `message_ar` names who accepted
+   and who rejected. The LLM is not asked to explain a disputed or unclear result.
+5. **Otherwise** the verdict is the one given by the most scholars (each scholar counted once
+   per verdict, unrecognised gradings ignored, ties broken by Dorar's order); `best_match` is
+   the first result carrying it.
+6. **Offline six books answering on its own** (Dorar down): the primary grade is Al-Albani's
+   when present, otherwise the first grade listed. Al-Bukhari and Muslim carry no grades in
+   the dataset and are reported as `sahih` with `grade_text = "أخرجه في صحيحه"`.
 
-Why "most scholars" and not "first result": for "طلب العلم فريضة على كل مسلم" Dorar's first
-result is Imam Ahmad's «كذب» about one chain, while seven of the eight scholars in the same
-response grade it weak. Following the first result would make the headline depend on Dorar's
-ordering.
+`DORAR_PRIMARY_RULE=first` switches steps 4–5 to "first result with a definite verdict".
+
+Why not simply take Dorar's first result? Real examples from 2026-10-06:
+
+| Text | Dorar's first result | What the API reports | Why |
+| --- | --- | --- | --- |
+| إنما الأعمال بالنيات | Ibn Abd al-Barr: "خطأ…" (one chain) | صحيح — صحيح البخاري #1 | It is in al-Bukhari |
+| طلب العلم فريضة على كل مسلم | Imam Ahmad: «كذب» (one chain) | ضعيف | 7 of 8 scholars in the results grade it weak |
+| لا ضرر ولا ضرار | Ibn al-Mundhir: weak chain | مختلف فيه | an-Nawawi and Al-Albani accept it, others reject |
+| من حسن إسلام المرء تركه ما لا يعنيه | Ibn Adi: weak chain | مختلف فيه | Dorar's 15 results are all criticism; at-Tirmidhi's graders accept it |
+
+Known limit: Dorar's API returns at most 15 results, so a scholar's grading that is not among
+them, and not in the six-books dataset either, is not seen.
 
 ### Matching and typo tolerance
 
