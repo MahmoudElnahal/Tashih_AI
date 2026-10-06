@@ -11,6 +11,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Any, Literal, Protocol
 
 from openai import AsyncOpenAI
@@ -23,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 MAX_EXPLANATION_CHARS = 450
 MAX_EXPLANATION_SENTENCES = 3
+MIN_TYPO_COVERAGE = 0.7
+MIN_RUN_CHARS = 3
 _SENTENCE_END = re.compile(r"[.!؟?]+")
 _FIQH_WORDS = re.compile(
     r"(?<![ء-ي])(?:يجوز|حرام|حلال|مكروه|مستحب|فتوي|الراجح|يجب عليك|اجمع|اجمعوا|باتفاق)"
@@ -57,14 +60,31 @@ class LLM(Protocol):
 
 
 def validate_extraction(message: str, extraction: Extraction) -> Extraction | None:
-    """Reject extracted text that is not literally present in the user's message."""
+    """Accept the LLM's text only if it is the user's own text, give or take typos.
+
+    The model may fix spelling ("انماا لاعمال" -> "إنما الأعمال") but may not
+    complete, extend or swap the hadith: at least ``MIN_TYPO_COVERAGE`` of the
+    returned text must be made of runs of letters that appear, in order, in
+    the user's message.
+    """
     if extraction.intent == "out_of_scope":
         return Extraction("out_of_scope", "")
     text = extraction.hadith_text.strip()
-    extracted = normalize(text)
-    if not extracted or extracted not in normalize(message):
+    extracted = normalize(text).replace(" ", "")
+    source = normalize(message).replace(" ", "")
+    if not extracted:
+        return None
+    if extracted not in source and typo_coverage(source, extracted) < MIN_TYPO_COVERAGE:
         return None
     return Extraction("hadith_check", text)
+
+
+def typo_coverage(source: str, candidate: str) -> float:
+    """Share of ``candidate`` covered by in-order runs (>= 3 letters) from ``source``."""
+    if not candidate:
+        return 0.0
+    blocks = SequenceMatcher(None, source, candidate, autojunk=False).get_matching_blocks()
+    return sum(block.size for block in blocks if block.size >= MIN_RUN_CHARS) / len(candidate)
 
 
 def validate_explanation(explanation: str | None, facts: ExplainFacts) -> str | None:

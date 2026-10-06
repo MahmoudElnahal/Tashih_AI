@@ -32,6 +32,7 @@ FROM base AS ui
 COPY requirements-ui.txt .
 RUN pip install -r requirements-ui.txt
 COPY ui ./ui
+COPY .streamlit ./.streamlit
 USER tashih
 EXPOSE 8501
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \

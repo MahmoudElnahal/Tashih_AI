@@ -50,13 +50,19 @@ CSS = """
 :root { --ink:#1d2b24; --muted:#6b7a72; --line:#e3e8e4; --card:#ffffff; --bg:#f6f8f6;
         --ok:#157347; --ok-bg:#e3f4ea; --bad:#b3261e; --bad-bg:#fbe9e7; --neutral:#5f6b66; --neutral-bg:#eceff0;
         --accent:#0f6b5c; }
-html, body, [class*="st-"], .stApp, .stMarkdown, button, input, textarea {
+html, body, .stApp, .stMarkdown, p, li, label, h1, h2, h3, button, input, textarea, summary {
   font-family:'Tajawal', sans-serif !important; }
+/* Streamlit draws its icons with an icon font: never override it. */
+[data-testid="stIconMaterial"], .material-symbols-rounded, .material-icons {
+  font-family:'Material Symbols Rounded' !important; }
 .stApp { direction: rtl; background: var(--bg); }
 .block-container { max-width: 860px; padding-top: 2.2rem; }
 h1, h2, h3, p, li, label, .stMarkdown, [data-testid="stChatMessageContent"] { text-align: right; }
 [data-testid="stChatMessage"] { flex-direction: row-reverse; gap: .6rem; background: transparent; }
 [data-testid="stChatInput"] textarea { direction: rtl; text-align: right; }
+[data-testid="stExpander"] details { background:var(--card); border:1px solid var(--line); border-radius:12px; }
+[data-testid="stExpander"] summary, [data-testid="stExpander"] summary p { color:var(--ink) !important; }
+.stApp, .stApp p, .stApp label, .stCaption { color:var(--ink); }
 .stTabs [data-baseweb="tab-list"] { gap: .4rem; }
 .stTabs [data-baseweb="tab"] { font-size: 1.02rem; font-weight: 500; padding: .4rem 1rem; }
 .brand { display:flex; align-items:baseline; gap:.7rem; margin-bottom:.2rem; }

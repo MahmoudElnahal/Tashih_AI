@@ -107,7 +107,7 @@ Field notes:
 | `best_match` | yes | Null unless `status = found`. |
 | `best_match.narrator` | yes | The offline dataset has no narrator field. Dorar may give it in brackets, e.g. `[عمر بن الخطاب]`, exactly as the source prints it. |
 | `best_match.grades` | no | Every grading available for this text, each with its own `verdict_code`. |
-| `best_match.match_score` | no | `1.0` = the query is an exact substring of the hadith after normalization. Lower values (≥ 0.81) are token-overlap matches. |
+| `best_match.match_score` | no | `1.0` = letter-for-letter (after normalization). `0.77`–`0.97` = matched despite typos or small wording differences; see "Matching and typo tolerance". |
 | `other_matches` | no | May be empty. Same shape as `best_match`. |
 | `explanation_ar` | yes | Null when there is no LLM, the LLM failed, or its answer was rejected by the validator. Never required to render a result. |
 | `message_ar` | no | Deterministic summary, or the reason for a non-found status. |
@@ -144,7 +144,8 @@ How a message is routed:
    حديث") → `out_of_scope` with a message asking for the text.
 2. Otherwise the cleaned text is verified.
 3. Only if that search finds nothing and an LLM is configured, the LLM is asked to extract the
-   hadith text. Its answer is used only if it is a literal substring of the user's message.
+   hadith text and fix its spelling. Its answer is used only if it is still the user's own
+   text (see "Matching and typo tolerance").
 
 ### Enums
 
@@ -193,17 +194,44 @@ result is Imam Ahmad's «كذب» about one chain, while seven of the eight scho
 response grade it weak. Following the first result would make the headline depend on Dorar's
 ordering.
 
-### Matching
+### Matching and typo tolerance
 
-Text is normalized (tashkeel and tatweel removed, أإآٱ→ا, ى→ي, ة→ه, non-Arabic dropped).
+Users misspell. The service tolerates typos without guessing, in three layers.
 
-- exact substring of the normalized hadith → score `1.0`
-- else token overlap ≥ 0.85, only for queries of ≥ 3 tokens → score `ratio × 0.95`
-- queries with fewer than 2 distinctive tokens are not searched (formulaic words such as
-  "قال رسول الله" do not count)
+**1. Wrapper stripping (no AI).** Greetings, questions and colloquial phrasing around the
+hadith are removed before searching: "ما صحة حديث …", "قال رسول الله ﷺ …", "… هو دا حديث
+صحيح", "… صح ولا غلط", "سمعت حديث بيقول …". `query` in the response is what was searched.
+
+**2. Deterministic matching (no AI).** Text is normalized (tashkeel and tatweel removed,
+أإآٱ→ا, ى→ي, ة→ه, non-Arabic dropped), then every candidate from the source is scored:
+
+| `match_score` | Rule |
+| --- | --- |
+| `1.0` | The query is an exact substring of the hadith |
+| `0.97` | Same, ignoring spaces ("انماا لاعمال" = "انما الاعمال") |
+| `ratio × 0.95` | ≥ 85% of the query's words appear in the hadith (queries of ≥ 3 words) |
+| `ratio × 0.90` | Typo-tolerant: a word also counts when it is one edit away from a hadith word (one letter missing, extra, wrong, or two swapped) |
+
+Guards on the typo-tolerant tier, so a different hadith is never "corrected" into a match:
+at least half of the words must be exactly right; only words of 4+ letters may differ; the
+matched words must sit close together in the hadith; and ≥ 85% of the words must match.
+Queries with fewer than 2 distinctive words are not searched at all ("قال رسول الله" does
+not count).
+
+**3. LLM spelling correction (`/v1/chat` only, only after layers 1–2 find nothing).** The
+model may fix spelling but may not complete, extend or swap the hadith: its text is accepted
+only if at least 70% of it is made of letter runs that appear, in order, in the user's own
+message. The corrected text is then searched and scored by layer 2 like any other query.
+
+Transparency: whenever `match_score < 1.0`, `message_ar` ends with a note that the typed
+text is not letter-for-letter the source text; when the LLM corrected the spelling,
+`message_ar` shows the corrected text. Clients should always display
+`best_match.hadith_text` so the user can confirm it is the hadith they meant.
 
 Dorar's endpoint is a keyword search and returns 15 results even for an invented sentence, so
-every Dorar result is re-scored with these rules before it is trusted.
+every Dorar result is re-scored with these rules before it is trusted. Dorar's own search is
+typo-tolerant, which is why a misspelled query usually still brings back the right
+candidates.
 
 ## Errors
 

@@ -58,6 +58,9 @@ MSG_UNCLEAR = " عبارة الحكم تحتاج إلى مراجعة أهل ال
 MSG_DIFFER = (
     " تنبيه: وردت على بعض طرق هذا الحديث ورواياته أحكام أخرى مختلفة؛ راجع قائمة الأحكام وأهل العلم."
 )
+MSG_NOT_LITERAL = (
+    " تنبيه: ما كتبته لا يطابق نص المصدر حرفاً بحرف؛ تأكد أن النص المعروض هو الحديث الذي تقصده."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +144,8 @@ def summary_message(found: _Found, differ: bool) -> str:
         message += MSG_UNCLEAR
     if differ:
         message += MSG_DIFFER
+    if best.score < 1.0:
+        message += MSG_NOT_LITERAL
     return message
 
 

@@ -21,6 +21,7 @@ MSG_OUT_OF_SCOPE = (
     "حكمه ومن حكم عليه ومصدره. لا أجيب عن الأسئلة الفقهية أو التفسير أو غيرها؛ "
     "لهذه المسائل يُرجى سؤال أهل العلم."
 )
+MSG_CORRECTED = " (صُحِّحت كتابة النص قبل البحث إلى: «{text}».)"
 MSG_NEEDS_TEXT = "من فضلك اكتب نص الحديث الذي تريد التحقق منه، وسأبحث عن حكمه ومصدره."
 
 
@@ -85,9 +86,13 @@ class ChatService:
             )
         if normalize(extraction.hadith_text) == normalize(guess.hadith_text):
             return result
-        return await self._verify.verify(
+        corrected = await self._verify.verify(
             extraction.hadith_text, max_results=3, request_id=request_id
         )
+        if corrected.status is Status.FOUND:
+            note = MSG_CORRECTED.format(text=corrected.query)
+            return corrected.model_copy(update={"message_ar": corrected.message_ar + note})
+        return corrected
 
     async def _extract(self, message: str) -> Extraction | None:
         if self._llm is None:

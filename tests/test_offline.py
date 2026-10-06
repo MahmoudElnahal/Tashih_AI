@@ -48,6 +48,8 @@ async def test_bukhari_is_preferred_on_equal_scores(source: OfflineSixBooksSourc
     assert [(m.source_book, m.number_or_page, m.score) for m in matches] == [
         ("صحيح البخاري", "1", 1.0),
         ("سنن النسائي", "75", 1.0),
+        # Same hadith worded «لدنيا» instead of «إلى دنيا»: a typo-tolerant match.
+        ("صحيح مسلم", "4927", 0.9),
     ]
 
 
