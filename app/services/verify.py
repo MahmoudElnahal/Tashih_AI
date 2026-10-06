@@ -4,12 +4,14 @@ Primary-verdict rule (documented in docs/API.md):
 
 1. Sources are tried in ``SOURCES`` order; the first one that returns a
    confident match answers. A source that fails is skipped (fallback).
-2. Among the matches tied at the best score, the primary result is the first
-   one whose grade text classifies to a definite verdict; if none does, the
-   first match is used and the verdict is ``unclear``.
-3. For Dorar (one grading per result) the gradings of all top-scored results
-   are listed in ``best_match.grades``. For the offline dataset the primary
-   grade is Al-Albani's when present.
+2. Only matches tied at the best score are considered.
+3. Dorar returns one scholar's grading per result, often for different chains
+   of the same text. All of them are listed in ``best_match.grades``. The
+   primary verdict is the one given by most scholars (each scholar counted
+   once per verdict; unclear gradings ignored; ties go to Dorar's order), and
+   ``best_match`` is the first result carrying it. ``DORAR_PRIMARY_RULE=first``
+   switches to "first result with a definite verdict". For the offline dataset
+   the primary grade is Al-Albani's when present, else the first grade.
 4. If the listed scholars disagree, ``scholars_differ`` is true and the
    message says so. One scholar's grading is never presented as consensus.
 """
@@ -53,7 +55,9 @@ MSG_UNAVAILABLE = (
 )
 MSG_NOT_ATTRIBUTE = " لا ينبغي نسبته إلى النبي ﷺ."
 MSG_UNCLEAR = " عبارة الحكم تحتاج إلى مراجعة أهل العلم ولا يُستخرج منها حكم آلي."
-MSG_DIFFER = " تنبيه: أحكام المحدثين على هذا الحديث مختلفة؛ راجع قائمة الأحكام وأهل العلم."
+MSG_DIFFER = (
+    " تنبيه: وردت على بعض طرق هذا الحديث ورواياته أحكام أخرى مختلفة؛ راجع قائمة الأحكام وأهل العلم."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,11 +75,39 @@ def _dedupe(grades: Sequence[SourceGrade]) -> tuple[SourceGrade, ...]:
     return tuple(seen.values())
 
 
-def select_primary(source: HadithSource, matches: Sequence[Match]) -> _Found:
+def _majority_code(top: Sequence[Match]) -> VerdictCode | None:
+    """Most common definite verdict, counting each (scholar, verdict) once.
+
+    Ties go to the verdict that appears first in the source's own order.
+    """
+    counts: dict[VerdictCode, int] = {}
+    seen: set[tuple[str | None, VerdictCode]] = set()
+    for match in top:
+        code = match.verdict.code
+        if code is VerdictCode.UNCLEAR or (match.muhaddith, code) in seen:
+            continue
+        seen.add((match.muhaddith, code))
+        counts[code] = counts.get(code, 0) + 1
+    return max(counts, key=lambda code: counts[code]) if counts else None
+
+
+def select_primary(
+    source: HadithSource, matches: Sequence[Match], rule: str = "majority"
+) -> _Found:
     """Apply the primary-verdict rule to a non-empty list of matches."""
     top = [m for m in matches if m.score == matches[0].score]
-    best = next((m for m in top if m.verdict.code is not VerdictCode.UNCLEAR), top[0])
-    grades = _dedupe([g for m in top for g in m.grades]) if source.grades_span_results else best.grades
+    wanted = _majority_code(top) if source.grades_span_results and rule == "majority" else None
+    best = next(
+        (
+            m
+            for m in top
+            if m.verdict.code is not VerdictCode.UNCLEAR and wanted in (None, m.verdict.code)
+        ),
+        top[0],
+    )
+    grades = (
+        _dedupe([g for m in top for g in m.grades]) if source.grades_span_results else best.grades
+    )
     others = tuple(m for m in matches if m is not best)
     return _Found(source=source.name, best=best, grades=grades, others=others)
 
@@ -88,7 +120,9 @@ def _to_model(match: Match, grades: Sequence[SourceGrade]) -> HadithMatch:
         source_book=match.source_book,
         number_or_page=match.number_or_page,
         grade_text=match.grade_text,
-        grades=[Grade(scholar=g.scholar, grade=g.grade, verdict_code=g.verdict.code) for g in grades],
+        grades=[
+            Grade(scholar=g.scholar, grade=g.grade, verdict_code=g.verdict.code) for g in grades
+        ],
         match_score=match.score,
     )
 
@@ -116,7 +150,10 @@ class VerifyService:
         sources: Sequence[HadithSource],
         llm: LLM | None,
         cache: TTLCache[VerifyResponse],
+        *,
+        primary_rule: str = "majority",
     ) -> None:
+        self._primary_rule = primary_rule
         self._sources = list(sources)
         self._llm = llm
         self._cache = cache
@@ -154,12 +191,14 @@ class VerifyService:
                 continue
             answered.append(source.name)
             if matches:
-                found = select_primary(source, matches)
+                found = select_primary(source, matches, self._primary_rule)
                 break
 
         if found is None:
             if not answered:
-                return self._empty(request_id, query_text, Status.UNAVAILABLE, MSG_UNAVAILABLE, None)
+                return self._empty(
+                    request_id, query_text, Status.UNAVAILABLE, MSG_UNAVAILABLE, None
+                )
             message = MSG_NOT_FOUND
             if failed and answered == ["offline_six_books"]:
                 message += MSG_NOT_FOUND_OFFLINE

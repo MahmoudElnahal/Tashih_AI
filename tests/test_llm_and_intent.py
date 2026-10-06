@@ -89,7 +89,9 @@ def test_extraction_must_be_literal_text_from_the_message() -> None:
     invented = Extraction("hadith_check", "اطلبوا العلم ولو في الصين فإن طلب العلم فريضة")
     assert validate_extraction(message, invented) is None
     assert validate_extraction(message, Extraction("hadith_check", "  ")) is None
-    assert validate_extraction(message, Extraction("out_of_scope", "x")) == Extraction("out_of_scope", "")
+    assert validate_extraction(message, Extraction("out_of_scope", "x")) == Extraction(
+        "out_of_scope", ""
+    )
 
 
 # ------------------------------------------------------------- heuristics ----
@@ -101,7 +103,10 @@ def test_extraction_must_be_literal_text_from_the_message() -> None:
         ("إنما الأعمال بالنيات", "إنما الأعمال بالنيات"),
         ("إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ", "إنما الأعمال بالنيات"),
         ("ما صحة حديث اطلبوا العلم ولو في الصين؟", "اطلبوا العلم ولو في الصين"),
-        ("السلام عليكم ورحمة الله وبركاته، ما صحة حديث: طلب العلم فريضة على كل مسلم", "طلب العلم فريضة على كل مسلم"),
+        (
+            "السلام عليكم ورحمة الله وبركاته، ما صحة حديث: طلب العلم فريضة على كل مسلم",
+            "طلب العلم فريضة على كل مسلم",
+        ),
         ("قال رسول الله صلى الله عليه وسلم: إنما الأعمال بالنيات", "إنما الأعمال بالنيات"),
         ("قال النبي ﷺ «طلب العلم فريضة على كل مسلم»", "طلب العلم فريضة على كل مسلم"),
         ("هل حديث اطلبوا العلم ولو في الصين صحيح؟", "اطلبوا العلم ولو في الصين"),
@@ -121,7 +126,16 @@ def test_clean_query_does_not_cut_inside_words() -> None:
 
 @pytest.mark.parametrize(
     "message",
-    ["ما حكم صلاة الجماعة؟", "هل يجوز الجمع بين الصلاتين", "ما تفسير سورة الإخلاص", "hello", "مرحبا", "شكرا", "", "😀"],
+    [
+        "ما حكم صلاة الجماعة؟",
+        "هل يجوز الجمع بين الصلاتين",
+        "ما تفسير سورة الإخلاص",
+        "hello",
+        "مرحبا",
+        "شكرا",
+        "",
+        "😀",
+    ],
 )
 def test_out_of_scope_messages(message: str) -> None:
     guess = guess_intent(message)

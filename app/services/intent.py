@@ -38,13 +38,14 @@ class IntentGuess:
 def _flex(pattern: str) -> str:
     """Let a pattern written with plain letters match common spelling variants."""
     return (
-        pattern.replace("ا", "[اأإآ]").replace("ي", "[يى]").replace("ه", "[هة]").replace(" ", r"\s+")
+        pattern.replace("ا", "[اأإآ]")
+        .replace("ي", "[يى]")
+        .replace("ه", "[هة]")
+        .replace(" ", r"\s+")
     )
 
 
-_SALAWAT = (
-    r"(?: (?:ﷺ|صلي الله عليه وسلم|صلي الله عليه واله وسلم|عليه الصلاه والسلام|عليه السلام))?"
-)
+_SALAWAT = r"(?: (?:ﷺ|صلي الله عليه وسلم|صلي الله عليه واله وسلم|عليه الصلاه والسلام|عليه السلام))?"
 _PROPHET = r"(?:رسول الله|النبي|الرسول|نبي الله|المصطفي)"
 
 _LEADING = [
@@ -75,7 +76,9 @@ _TRAILING = [
 ]
 
 _HADITH_CUE = re.compile(
-    _flex(rf"حديث|احاديث|صحه|صحته|{_PROPHET} (?:ﷺ|صلي الله عليه وسلم)? ?(?:قال|يقول)|قال {_PROPHET}|ﷺ")
+    _flex(
+        rf"حديث|احاديث|صحه|صحته|{_PROPHET} (?:ﷺ|صلي الله عليه وسلم)? ?(?:قال|يقول)|قال {_PROPHET}|ﷺ"
+    )
 )
 _STRONG_OUT_OF_SCOPE = re.compile(
     _flex(
@@ -147,8 +150,10 @@ def guess_intent(message: str) -> IntentGuess:
         return IntentGuess(Intent.OUT_OF_SCOPE, "", confident=True)
     if has_cue:
         return IntentGuess(Intent.HADITH_CHECK, text, confident=True)
-    if _QUESTION_START.search(tidy) or tidy.endswith(("؟", "?")) or message.rstrip().endswith(
-        ("؟", "?")
+    if (
+        _QUESTION_START.search(tidy)
+        or tidy.endswith(("؟", "?"))
+        or message.rstrip().endswith(("؟", "?"))
     ):
         return IntentGuess(Intent.HADITH_CHECK, text, confident=False)
     return IntentGuess(Intent.HADITH_CHECK, text, confident=True)

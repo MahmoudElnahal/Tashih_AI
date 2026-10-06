@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     dorar_base_url: str = "https://dorar.net/dorar_api.json"
     dorar_timeout_seconds: float = 10.0
     dorar_retry_backoff_seconds: float = 0.5
+    # majority = verdict given by most scholars; first = first definite result.
+    dorar_primary_rule: str = "majority"
     offline_data_dir: Path = Path("data/hadith")
     offline_base_url: str = "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/"
     offline_download_timeout_seconds: float = 180.0

@@ -160,6 +160,8 @@ async def test_timeout_and_bad_payload_raise_unavailable() -> None:
         await source.search("إنما الأعمال بالنيات")
     assert source.health() == "unavailable"
 
-    challenge = httpx.MockTransport(lambda r: httpx.Response(200, text="<title>Just a moment...</title>"))
+    challenge = httpx.MockTransport(
+        lambda r: httpx.Response(200, text="<title>Just a moment...</title>")
+    )
     with pytest.raises(SourceBlocked):
         await _source(challenge).search("إنما الأعمال بالنيات")

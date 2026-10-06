@@ -23,7 +23,9 @@ class Status(StrEnum):
 
 
 class ErrorBody(BaseModel):
-    code: str = Field(description="Machine-readable error code / رمز الخطأ", examples=["rate_limited"])
+    code: str = Field(
+        description="Machine-readable error code / رمز الخطأ", examples=["rate_limited"]
+    )
     message_ar: str = Field(description="رسالة للمستخدم بالعربية")
     message_en: str = Field(description="Developer-facing message in English")
     request_id: str = Field(description="Same value as the X-Request-ID response header")

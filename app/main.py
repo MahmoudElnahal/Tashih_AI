@@ -19,11 +19,14 @@ from app.deps import AppState, RateLimiter
 from app.errors import register_error_handlers
 from app.logging_conf import configure_logging
 from app.models import HealthResponse, HealthSources, VerifyResponse
-from app.routers import hadith
+from app.routers import hadith, prayer
 from app.services.cache import TTLCache
 from app.services.chat import ChatService
+from app.services.daily import DailyService
 from app.services.llm import LLM, OpenAILLM
+from app.services.prayer import PrayerService
 from app.services.verify import VerifyService
+from app.sources.aladhan import AladhanClient
 from app.sources.base import HadithSource
 from app.sources.dorar import DorarSource
 from app.sources.offline import OfflineSixBooksSource
@@ -50,7 +53,6 @@ def build_sources(settings: Settings, client: httpx.AsyncClient) -> list[HadithS
         if name == "dorar":
             sources.append(
                 DorarSource(
-                    client,
                     base_url=settings.dorar_base_url,
                     timeout=settings.dorar_timeout_seconds,
                     retry_backoff=settings.dorar_retry_backoff_seconds,
@@ -76,6 +78,7 @@ def create_app(
     sources: Sequence[HadithSource] | None = None,
     llm: LLM | None = None,
     http_client: httpx.AsyncClient | None = None,
+    prayer_service: PrayerService | None = None,
 ) -> FastAPI:
     """Build the app. ``sources`` / ``llm`` / ``http_client`` are injectable for tests."""
     settings = settings or get_settings()
@@ -97,18 +100,30 @@ def create_app(
             )
             active_llm = owned_llm
 
-        active_sources = (
-            list(sources) if sources is not None else build_sources(settings, client)
-        )
+        active_sources = list(sources) if sources is not None else build_sources(settings, client)
         cache: TTLCache[VerifyResponse] = TTLCache(
             max_entries=settings.cache_max_entries, ttl_seconds=settings.cache_ttl_seconds
         )
-        verify = VerifyService(active_sources, active_llm, cache)
+        verify = VerifyService(
+            active_sources, active_llm, cache, primary_rule=settings.dorar_primary_rule
+        )
         app.state.tashih = AppState(
             settings=settings,
             verify=verify,
             chat=ChatService(verify, active_llm),
             rate_limiter=RateLimiter(settings.rate_limit_per_minute),
+            prayer=prayer_service
+            or PrayerService(
+                AladhanClient(
+                    client,
+                    base_url=settings.aladhan_base_url,
+                    timeout=settings.aladhan_timeout_seconds,
+                ),
+                default_method=settings.prayer_default_method,
+            ),
+            daily=DailyService(
+                next((s for s in active_sources if isinstance(s, OfflineSixBooksSource)), None)
+            ),
         )
         app.state.llm_enabled = active_llm is not None
         for source in active_sources:
@@ -169,6 +184,7 @@ def create_app(
 
     register_error_handlers(app)
     app.include_router(hadith.router)
+    app.include_router(prayer.router)
 
     @app.get(
         "/health",

@@ -10,8 +10,12 @@ from tests.conftest import ClientFactory, FakeLLM, FakeSource, make_match
 NIYYAT = "إنما الأعمال بالنيات"
 CHINA = "اطلبوا العلم ولو في الصين"
 
-SAHIH = make_match(NIYYAT, "صحيح", muhaddith="الألباني", book="غاية المرام", number="14", narrator="عمر بن الخطاب")
-DAIF = make_match(CHINA, "ضعيف", muhaddith="ابن باز", book="التحفة الكريمة", number="72", narrator=None)
+SAHIH = make_match(
+    NIYYAT, "صحيح", muhaddith="الألباني", book="غاية المرام", number="14", narrator="عمر بن الخطاب"
+)
+DAIF = make_match(
+    CHINA, "ضعيف", muhaddith="ابن باز", book="التحفة الكريمة", number="72", narrator=None
+)
 MAWDU = make_match(CHINA, "باطل", muhaddith="الألباني", book="السلسلة الضعيفة", number="416")
 
 
@@ -82,6 +86,27 @@ def test_primary_skips_unclear_grade_and_flags_disagreement(client_factory: Clie
     assert len(body["other_matches"]) == 1
 
 
+def test_primary_is_the_majority_verdict_not_the_first_result(
+    client_factory: ClientFactory,
+) -> None:
+    """Real case: Dorar lists Ahmad's «كذب» first, but most scholars say «ضعيف»."""
+    results = [
+        make_match(CHINA, "كذب", muhaddith="الإمام أحمد"),
+        make_match(CHINA, "غير صحيح", muhaddith="البزار"),
+        make_match(CHINA, "ليس بصحيح", muhaddith="ابن حبان"),
+        make_match(CHINA, "[ منكر ]", muhaddith="الساجي"),
+        make_match(CHINA, "منكر جدا", muhaddith="الساجي"),  # same scholar counted once
+    ]
+    body = client_factory([dorar(matches=results)]).post("/v1/verify", json={"text": CHINA}).json()
+    assert body["verdict_code"] == "daif"
+    assert body["best_match"]["muhaddith"] == "البزار"
+    assert len(body["best_match"]["grades"]) == 5
+    assert body["scholars_differ"] is False
+
+    first = client_factory([dorar(matches=results)], dorar_primary_rule="first")
+    assert first.post("/v1/verify", json={"text": CHINA}).json()["verdict_code"] == "mawdu"
+
+
 def test_all_grades_unclear_gives_unclear_verdict(client_factory: ClientFactory) -> None:
     client = client_factory([dorar(matches=[make_match(NIYYAT, "غريب من هذا الوجه")])])
     body = client.post("/v1/verify", json={"text": NIYYAT}).json()
@@ -113,7 +138,9 @@ def test_single_word_is_not_searched(client_factory: ClientFactory) -> None:
 
 def test_blocked_source_falls_back(client_factory: ClientFactory) -> None:
     blocked = dorar(error=SourceBlocked("dorar", "HTTP 403"))
-    fallback = offline(matches=[make_match(NIYYAT, "أخرجه في صحيحه", muhaddith="البخاري", book="صحيح البخاري")])
+    fallback = offline(
+        matches=[make_match(NIYYAT, "أخرجه في صحيحه", muhaddith="البخاري", book="صحيح البخاري")]
+    )
     client = client_factory([blocked, fallback])
     body = client.post("/v1/verify", json={"text": NIYYAT}).json()
 
@@ -172,7 +199,9 @@ def test_fallback_answers_are_not_cached(client_factory: ClientFactory) -> None:
 
 def test_valid_explanation_is_returned(client_factory: ClientFactory) -> None:
     llm = FakeLLM(explanation="حكم عليه ابن باز بأنه ضعيف. لا ينبغي نسبته إلى النبي ﷺ.")
-    body = client_factory([dorar(matches=[DAIF])], llm).post("/v1/verify", json={"text": CHINA}).json()
+    body = (
+        client_factory([dorar(matches=[DAIF])], llm).post("/v1/verify", json={"text": CHINA}).json()
+    )
     assert body["explanation_ar"] == llm.explanation
     # The LLM only ever sees the retrieved fields.
     sent = llm.explain_calls[0]
@@ -181,7 +210,9 @@ def test_valid_explanation_is_returned(client_factory: ClientFactory) -> None:
 
 def test_contradicting_explanation_is_dropped(client_factory: ClientFactory) -> None:
     llm = FakeLLM(explanation="هذا حديث صحيح ثابت عن النبي ﷺ.")
-    body = client_factory([dorar(matches=[DAIF])], llm).post("/v1/verify", json={"text": CHINA}).json()
+    body = (
+        client_factory([dorar(matches=[DAIF])], llm).post("/v1/verify", json={"text": CHINA}).json()
+    )
     assert body["status"] == "found"
     assert body["verdict_code"] == "daif"
     assert body["explanation_ar"] is None
@@ -212,7 +243,9 @@ def test_explain_false_skips_the_llm(client_factory: ClientFactory) -> None:
 
 
 def chat(client, content: str, **extra: object):  # type: ignore[no-untyped-def]
-    return client.post("/v1/chat", json={"messages": [{"role": "user", "content": content}], **extra})
+    return client.post(
+        "/v1/chat", json={"messages": [{"role": "user", "content": content}], **extra}
+    )
 
 
 def test_chat_found_builds_reply_without_llm(client_factory: ClientFactory) -> None:
@@ -227,7 +260,14 @@ def test_chat_found_builds_reply_without_llm(client_factory: ClientFactory) -> N
     assert body["query"] == CHINA
     assert body["session_id"] == "abc"
     reply = body["reply_ar"]
-    for expected in ("الحكم: ضعيف", CHINA, "ابن باز", "التحفة الكريمة — 72", "لا ينبغي نسبته", DISCLAIMER_AR):
+    for expected in (
+        "الحكم: ضعيف",
+        CHINA,
+        "ابن باز",
+        "التحفة الكريمة — 72",
+        "لا ينبغي نسبته",
+        DISCLAIMER_AR,
+    ):
         assert expected in reply
 
 
@@ -320,7 +360,9 @@ def test_validation_errors_use_the_envelope(client_factory: ClientFactory) -> No
     client = client_factory([dorar()])
     assert_error(client.post("/v1/verify", json={"text": ""}), 422, "validation_error")
     assert_error(client.post("/v1/verify", json={"text": "ا" * 2001}), 422, "validation_error")
-    assert_error(client.post("/v1/verify", json={"text": NIYYAT, "max_results": 0}), 422, "validation_error")
+    assert_error(
+        client.post("/v1/verify", json={"text": NIYYAT, "max_results": 0}), 422, "validation_error"
+    )
     assert_error(client.post("/v1/verify", json={}), 422, "validation_error")
     assert_error(client.post("/v1/chat", json={"messages": []}), 422, "validation_error")
     assert_error(
@@ -360,7 +402,10 @@ def test_rate_limit_per_ip(client_factory: ClientFactory) -> None:
 
 def test_request_id_is_echoed_or_generated(client_factory: ClientFactory) -> None:
     client = client_factory([dorar()])
-    assert client.get("/health", headers={"X-Request-ID": "client-id-12345"}).headers["X-Request-ID"] == "client-id-12345"
+    assert (
+        client.get("/health", headers={"X-Request-ID": "client-id-12345"}).headers["X-Request-ID"]
+        == "client-id-12345"
+    )
     generated = client.get("/health", headers={"X-Request-ID": "bad id\n"}).headers["X-Request-ID"]
     assert len(generated) == 36
 

@@ -107,9 +107,7 @@ def register_error_handlers(app: FastAPI) -> None:
         first = exc.errors()[0] if exc.errors() else {}
         where = ".".join(str(part) for part in first.get("loc", ()) if part != "body")
         detail = f"{where}: {first.get('msg', 'invalid')}" if where else "Invalid request."
-        return _envelope(
-            request, 422, "validation_error", "البيانات المرسلة غير صحيحة.", detail
-        )
+        return _envelope(request, 422, "validation_error", "البيانات المرسلة غير صحيحة.", detail)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(request: Request, exc: StarletteHTTPException) -> JSONResponse:

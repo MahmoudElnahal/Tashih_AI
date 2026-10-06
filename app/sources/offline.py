@@ -75,9 +75,9 @@ class _Entry:
     grades: tuple[tuple[str, str], ...]
 
 
-def grade_entry(book: Book, raw_grades: tuple[tuple[str, str], ...]) -> tuple[
-    str | None, str, tuple[SourceGrade, ...], Verdict
-]:
+def grade_entry(
+    book: Book, raw_grades: tuple[tuple[str, str], ...]
+) -> tuple[str | None, str, tuple[SourceGrade, ...], Verdict]:
     """Return (muhaddith, grade_text, all grades, primary verdict).
 
     Primary rule: Al-Albani's grade when present, otherwise the first grade.
@@ -187,15 +187,24 @@ class OfflineSixBooksSource:
             return []
         return await asyncio.to_thread(self._search_sync, query)
 
-    def _search_sync(self, query: Query) -> list[Match]:
+    def _search_sync(self, query: Query, sahih_books_only: bool = False) -> list[Match]:
         scored: list[tuple[float, _Entry]] = []
         for entry in self._index:
+            if sahih_books_only and not BOOKS[entry.book_index].sahih_book:
+                continue
             score = match_score(query, entry.norm)
             if score > 0:
                 scored.append((score, entry))
         # Best score, then Bukhari/Muslim first, then the shorter text.
         scored.sort(key=lambda item: (-item[0], item[1].book_index, len(item[1].norm)))
         return [self._to_match(score, entry) for score, entry in scored[:MAX_CANDIDATES]]
+
+    async def find_in_sahihayn(self, phrase: str) -> Match | None:
+        """Shortest exact match of ``phrase`` in al-Bukhari, else Muslim."""
+        if self._status != "ready":
+            raise SourceUnavailable(self.name, f"index is {self._status}")
+        matches = await asyncio.to_thread(self._search_sync, build_query(phrase), True)
+        return next((m for m in matches if m.score == 1.0), None)
 
     @staticmethod
     def _to_match(score: float, entry: _Entry) -> Match:

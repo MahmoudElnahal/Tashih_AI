@@ -10,7 +10,7 @@ import logging
 
 from app.models import DISCLAIMER_AR, ChatRequest, ChatResponse, Status, VerifyResponse
 from app.services.intent import Intent, guess_intent
-from app.services.llm import LLM, validate_extraction
+from app.services.llm import LLM, Extraction, validate_extraction
 from app.services.normalize import normalize
 from app.services.verify import VerifyService
 
@@ -76,16 +76,20 @@ class ChatService:
         # extraction (it can never change the ruling, only the search text).
         extraction = await self._extract(message)
         if extraction is None:
-            return result if guess.confident else self._static(request_id, message, MSG_OUT_OF_SCOPE)
+            return (
+                result if guess.confident else self._static(request_id, message, MSG_OUT_OF_SCOPE)
+            )
         if extraction.intent == "out_of_scope":
-            return result if guess.confident else self._static(request_id, message, MSG_OUT_OF_SCOPE)
+            return (
+                result if guess.confident else self._static(request_id, message, MSG_OUT_OF_SCOPE)
+            )
         if normalize(extraction.hadith_text) == normalize(guess.hadith_text):
             return result
         return await self._verify.verify(
             extraction.hadith_text, max_results=3, request_id=request_id
         )
 
-    async def _extract(self, message: str):  # type: ignore[no-untyped-def]
+    async def _extract(self, message: str) -> Extraction | None:
         if self._llm is None:
             return None
         try:

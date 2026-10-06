@@ -38,18 +38,26 @@ async def main() -> None:
             if isinstance(source, OfflineSixBooksSource):
                 started = time.perf_counter()
                 await source.wait_ready()
-                print(f"offline index: {source.size} hadith in {time.perf_counter() - started:.1f}s")
-        service = VerifyService(sources, None, TTLCache[VerifyResponse](max_entries=10, ttl_seconds=0))
+                print(
+                    f"offline index: {source.size} hadith in {time.perf_counter() - started:.1f}s"
+                )
+        service = VerifyService(
+            sources, None, TTLCache[VerifyResponse](max_entries=10, ttl_seconds=0)
+        )
         for text in SAMPLES:
             started = time.perf_counter()
             r = await service.verify(text, max_results=3, request_id="smoke")
             took = (time.perf_counter() - started) * 1000
             print(f"\n== {text}  [{took:.0f} ms]")
-            print(f"   status={r.status.value} verdict={r.verdict_code} ({r.verdict_ar}) "
-                  f"source={r.source_used} differ={r.scholars_differ}")
+            print(
+                f"   status={r.status.value} verdict={r.verdict_code} ({r.verdict_ar}) "
+                f"source={r.source_used} differ={r.scholars_differ}"
+            )
             if r.best_match:
                 b = r.best_match
-                print(f"   {b.source_book} | {b.number_or_page} | {b.muhaddith} | {b.grade_text} | score={b.match_score}")
+                print(
+                    f"   {b.source_book} | {b.number_or_page} | {b.muhaddith} | {b.grade_text} | score={b.match_score}"
+                )
                 print("   grades:", [(g.scholar, g.grade, g.verdict_code.value) for g in b.grades])
             print("   msg:", r.message_ar)
 

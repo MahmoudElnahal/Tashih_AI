@@ -23,6 +23,7 @@ import html
 import json
 import logging
 import re
+import ssl
 from dataclasses import dataclass
 from typing import Any
 
@@ -154,19 +155,33 @@ def to_matches(text: str, results: list[DorarResult]) -> list[Match]:
     return matches
 
 
+def stdlib_https_context() -> ssl.SSLContext:
+    """TLS context configured exactly like Python's own ``http.client``.
+
+    Verified on 2026-10-06: Cloudflare in front of dorar.net answers HTTP 403 to
+    httpx's default TLS handshake but HTTP 200 to the standard library's, from
+    the same machine and IP. The only difference is ``post_handshake_auth``,
+    which ``http.client`` enables. Certificate verification is unchanged.
+    """
+    context = ssl.create_default_context()
+    context.post_handshake_auth = True
+    return context
+
+
 class DorarSource:
     name = SOURCE_NAME
     grades_span_results = True
 
     def __init__(
         self,
-        client: httpx.AsyncClient,
+        client: httpx.AsyncClient | None = None,
         *,
         base_url: str = "https://dorar.net/dorar_api.json",
         timeout: float = 10.0,
         retry_backoff: float = 0.5,
     ) -> None:
-        self._client = client
+        self._owns_client = client is None
+        self._client = client or httpx.AsyncClient(verify=stdlib_https_context(), timeout=timeout)
         self._base_url = base_url
         self._timeout = timeout
         self._retry_backoff = retry_backoff
@@ -179,7 +194,8 @@ class DorarSource:
         return None
 
     async def close(self) -> None:
-        return None
+        if self._owns_client:
+            await self._client.aclose()
 
     async def search(self, text: str) -> list[Match]:
         try:
@@ -225,4 +241,3 @@ class DorarSource:
             if _CLOUDFLARE.search(response.text[:4000]):
                 raise SourceBlocked(self.name, "Cloudflare challenge page") from exc
             raise SourceUnavailable(self.name, "unparseable response") from exc
-

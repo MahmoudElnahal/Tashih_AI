@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastapi import Depends, Request
@@ -16,6 +16,7 @@ from app.services.chat import ChatService
 from app.services.verify import VerifyService
 
 if TYPE_CHECKING:
+    from app.services.daily import DailyService
     from app.services.prayer import PrayerService
 
 WINDOW_SECONDS = 60
@@ -59,7 +60,7 @@ class AppState:
     chat: ChatService
     rate_limiter: RateLimiter
     prayer: PrayerService | None = None
-    extras: dict[str, object] = field(default_factory=dict)
+    daily: DailyService | None = None
 
 
 def get_state(request: Request) -> AppState:

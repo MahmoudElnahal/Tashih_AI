@@ -109,7 +109,14 @@ def test_english_grades(grade: str, expected: VerdictCode) -> None:
 
 @pytest.mark.parametrize(
     "grade",
-    ["صحيح وقيل ضعيف", "حسن، وفيه ضعف", "ضعيف والصواب أنه صحيح", "Sahih Daif", "Hasan - Munkar", "صحيح وقيل موضوع"],
+    [
+        "صحيح وقيل ضعيف",
+        "حسن، وفيه ضعف",
+        "ضعيف والصواب أنه صحيح",
+        "Sahih Daif",
+        "Hasan - Munkar",
+        "صحيح وقيل موضوع",
+    ],
 )
 def test_mixed_authentic_and_weak_is_unclear(grade: str) -> None:
     assert classify(grade).code is U
