@@ -12,7 +12,7 @@ OUTPUT = Path("docs/openapi.json")
 
 
 def main() -> None:
-    app = create_app(Settings(_env_file=None, openai_api_key=""), sources=[])  # type: ignore[call-arg]
+    app = create_app(Settings(_env_file=None, openai_api_key=""), sources=[])
     schema = app.openapi()
     OUTPUT.write_text(
         json.dumps(schema, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"

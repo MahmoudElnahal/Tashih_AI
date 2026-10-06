@@ -54,7 +54,9 @@ def main() -> None:
             print("   message_ar:", body.get("message_ar"))
 
         for text in SAMPLES + CHAT_EXTRA:
-            response = client.post("/v1/chat", json={"messages": [{"role": "user", "content": text}]})
+            response = client.post(
+                "/v1/chat", json={"messages": [{"role": "user", "content": text}]}
+            )
             body = response.json()
             print(f"\nPOST /v1/chat  «{text}»  [HTTP {response.status_code}]")
             print("  ", summary(body))

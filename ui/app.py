@@ -213,7 +213,9 @@ def chat_tab() -> None:
 
     for turn in history:
         with st.chat_message("user"):
-            st.markdown(f'<div class="user-bubble">{esc(turn["user"])}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="user-bubble">{esc(turn["user"])}</div>', unsafe_allow_html=True
+            )
         with st.chat_message("assistant"):
             if turn.get("error"):
                 st.error(turn["error"])
@@ -359,7 +361,9 @@ def prayer_tab() -> None:
     before = before_col.slider("دقائق قبل الأذان", 0, 30, 5)
     during = during_col.slider("دقائق بعد الأذان", 5, 60, 20, step=5)
     schedule, schedule_error = api(
-        "GET", "/v1/prayer/focus-schedule", params={**base, "before_min": before, "during_min": during}
+        "GET",
+        "/v1/prayer/focus-schedule",
+        params={**base, "before_min": before, "during_min": during},
     )
     if schedule_error or not schedule:
         st.error(schedule_error or "تعذر تحميل جدول التركيز.")
@@ -378,7 +382,8 @@ def prayer_tab() -> None:
         else '<span class="badge neutral">لا توجد نافذة تركيز نشطة الآن</span>'
     )
     pills = "".join(
-        f'<span class="pill">{esc(CATEGORY_AR.get(c, c))}</span>' for c in schedule["blocked_categories"]
+        f'<span class="pill">{esc(CATEGORY_AR.get(c, c))}</span>'
+        for c in schedule["blocked_categories"]
     )
     st.markdown(
         f'<div class="card">{status}{rows}<div class="note">الفئات المقترح قفلها: {pills}</div></div>',
