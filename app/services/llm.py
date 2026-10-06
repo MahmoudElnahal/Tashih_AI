@@ -27,9 +27,16 @@ MAX_EXPLANATION_SENTENCES = 3
 MIN_TYPO_COVERAGE = 0.7
 MIN_RUN_CHARS = 3
 _SENTENCE_END = re.compile(r"[.!؟?]+")
+_ARABIC = "\u0621-\u064a"
 _FIQH_WORDS = re.compile(
-    r"(?<![ء-ي])(?:يجوز|حرام|حلال|مكروه|مستحب|فتوي|الراجح|يجب عليك|اجمع|اجمعوا|باتفاق)"
-    r"(?![ء-ي])"
+    rf"(?<![{_ARABIC}])(?:يجوز|حرام|حلال|مكروه|مستحب|فتوي|الراجح|يجب عليك|اجمع|اجمعوا|باتفاق)"
+    rf"(?![{_ARABIC}])"
+)
+# The explanation may only restate the ruling: no commentary on the hadith's
+# meaning and no advice about acting on it.
+_OVERREACH = re.compile(
+    rf"(?<![{_ARABIC}])(?:يمكن الاعتماد|يمكن العمل|يعتمد عليه|يعمل به|العمل به|يستشهد|يحتج به|"
+    rf"يتحدث|يتكلم عن|يدل علي|يحث|يدعو الي|يبين|يوضح|اهميه|معني الحديث|فضل|موثوق)"
 )
 
 
@@ -114,7 +121,7 @@ def validate_explanation(explanation: str | None, facts: ExplainFacts) -> str | 
         value = normalize(field)
         if value:
             stripped = stripped.replace(value, " ")
-    if _FIQH_WORDS.search(stripped):
+    if _FIQH_WORDS.search(stripped) or _OVERREACH.search(stripped):
         return None
 
     signals = analyze(stripped)

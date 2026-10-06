@@ -72,18 +72,45 @@ def test_found_daif_says_not_to_attribute(client_factory: ClientFactory) -> None
     assert [m["muhaddith"] for m in body["other_matches"]] == ["الألباني"]
 
 
-def test_primary_skips_unclear_grade_and_flags_disagreement(client_factory: ClientFactory) -> None:
+def test_split_scholars_get_no_single_verdict(client_factory: ClientFactory) -> None:
+    """Some accept, some reject: the headline is «مختلف فيه», not one side's ruling."""
     unclear = make_match(NIYYAT, "غريب من هذا الوجه", muhaddith="ابن حجر")
     weak = make_match(NIYYAT, "إسناده ضعيف", muhaddith="العراقي")
     client = client_factory([dorar(matches=[unclear, SAHIH, weak])])
     body = client.post("/v1/verify", json={"text": NIYYAT, "max_results": 2}).json()
 
-    assert body["verdict_code"] == "sahih"
-    assert body["best_match"]["muhaddith"] == "الألباني"
+    assert body["status"] == "found"
+    assert body["verdict_code"] == "unclear"
+    assert body["verdict_ar"] == "مختلف فيه"
     assert body["scholars_differ"] is True
     assert body["refer_to_scholars"] is True
-    assert "مختلفة" in body["message_ar"]
+    assert "قبِله: الألباني" in body["message_ar"]
+    assert "وردّه: العراقي" in body["message_ar"]
+    assert "لا ينبغي نسبته" not in body["message_ar"]
+    assert len(body["best_match"]["grades"]) == 3
     assert len(body["other_matches"]) == 1
+
+
+def test_first_rule_keeps_the_first_definite_verdict(client_factory: ClientFactory) -> None:
+    weak = make_match(NIYYAT, "إسناده ضعيف", muhaddith="العراقي")
+    client = client_factory([dorar(matches=[SAHIH, weak])], dorar_primary_rule="first")
+    body = client.post("/v1/verify", json={"text": NIYYAT}).json()
+    assert body["verdict_code"] == "sahih"
+    assert body["scholars_differ"] is True
+    assert "مختلفة" in body["message_ar"]
+
+
+def test_disputed_verdict_is_never_sent_to_the_llm(client_factory: ClientFactory) -> None:
+    llm = FakeLLM(explanation="حكم عليه الألباني بأنه صحيح.")
+    weak = make_match(NIYYAT, "إسناده ضعيف", muhaddith="العراقي")
+    body = (
+        client_factory([dorar(matches=[SAHIH, weak])], llm)
+        .post("/v1/verify", json={"text": NIYYAT})
+        .json()
+    )
+    assert body["verdict_ar"] == "مختلف فيه"
+    assert body["explanation_ar"] is None
+    assert llm.explain_calls == []
 
 
 def test_primary_is_the_majority_verdict_not_the_first_result(
@@ -430,3 +457,34 @@ def test_openapi_documents_the_contract(client_factory: ClientFactory) -> None:
     schemas = spec["components"]["schemas"]
     assert {"VerifyResponse", "ChatResponse", "ErrorResponse", "HadithMatch"} <= set(schemas)
     assert "422" in spec["paths"]["/v1/verify"]["post"]["responses"]
+
+
+def test_unclear_verdict_is_never_sent_to_the_llm(client_factory: ClientFactory) -> None:
+    llm = FakeLLM(explanation="حكم عليه ابن حجر بأنه يحتاج مراجعة.")
+    client = client_factory([dorar(matches=[make_match(NIYYAT, "غريب من هذا الوجه")])], llm)
+    body = client.post("/v1/verify", json={"text": NIYYAT}).json()
+    assert body["verdict_code"] == "unclear"
+    assert body["explanation_ar"] is None
+    assert llm.explain_calls == []
+
+
+def test_overreaching_explanation_is_dropped(client_factory: ClientFactory) -> None:
+    """Real model output seen in testing: commentary beyond the ruling."""
+    llm = FakeLLM(
+        explanation="حكم عليه الألباني بأنه صحيح. يمكن الاعتماد عليه في الأمور المتعلقة بالدين."
+    )
+    body = (
+        client_factory([dorar(matches=[SAHIH])], llm)
+        .post("/v1/verify", json={"text": NIYYAT})
+        .json()
+    )
+    assert body["verdict_code"] == "sahih"
+    assert body["explanation_ar"] is None
+
+
+def test_rejected_llm_correction_stays_not_found(client_factory: ClientFactory) -> None:
+    # The model answers with a different hadith: the text is rejected, and an
+    # unsure message is reported as not_found rather than out_of_scope.
+    llm = FakeLLM(extraction=Extraction("hadith_check", NIYYAT))
+    body = chat(client_factory([dorar()], llm), "طلب المعرفه واجب علي الجميع صح؟").json()
+    assert body["status"] == "not_found"

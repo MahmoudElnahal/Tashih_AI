@@ -104,8 +104,13 @@ def create_app(
         cache: TTLCache[VerifyResponse] = TTLCache(
             max_entries=settings.cache_max_entries, ttl_seconds=settings.cache_ttl_seconds
         )
+        offline = next((s for s in active_sources if isinstance(s, OfflineSixBooksSource)), None)
         verify = VerifyService(
-            active_sources, active_llm, cache, primary_rule=settings.dorar_primary_rule
+            active_sources,
+            active_llm,
+            cache,
+            primary_rule=settings.dorar_primary_rule,
+            sahihayn=offline,
         )
         app.state.tashih = AppState(
             settings=settings,
@@ -121,9 +126,7 @@ def create_app(
                 ),
                 default_method=settings.prayer_default_method,
             ),
-            daily=DailyService(
-                next((s for s in active_sources if isinstance(s, OfflineSixBooksSource)), None)
-            ),
+            daily=DailyService(offline),
         )
         app.state.llm_enabled = active_llm is not None
         for source in active_sources:

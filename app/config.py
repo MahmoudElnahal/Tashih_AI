@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # OpenAI (optional). Empty key disables every LLM call.
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
-    openai_timeout_seconds: float = 12.0
+    openai_timeout_seconds: float = 8.0
 
     # Aladhan (prayer times / qibla).
     aladhan_base_url: str = "https://api.aladhan.com/v1"

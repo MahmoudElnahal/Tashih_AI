@@ -199,6 +199,15 @@ class OfflineSixBooksSource:
         scored.sort(key=lambda item: (-item[0], item[1].book_index, len(item[1].norm)))
         return [self._to_match(score, entry) for score, entry in scored[:MAX_CANDIDATES]]
 
+    async def search_sahihayn(self, text: str) -> list[Match]:
+        """Matches in Sahih al-Bukhari and Sahih Muslim only, best first."""
+        if self._status != "ready":
+            raise SourceUnavailable(self.name, f"index is {self._status}")
+        query = build_query(text)
+        if not query.is_searchable:
+            return []
+        return await asyncio.to_thread(self._search_sync, query, True)
+
     async def find_in_sahihayn(self, phrase: str) -> Match | None:
         """Shortest exact match of ``phrase`` in al-Bukhari, else Muslim."""
         if self._status != "ready":

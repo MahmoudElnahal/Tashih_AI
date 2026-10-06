@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import time
 
+import httpx
 import pytest
 
 from app.services.intent import clean_query
@@ -11,7 +13,15 @@ from app.services.llm import Extraction, validate_extraction
 from app.services.matcher import build_query, match_score, within_one_edit
 from app.services.normalize import normalize
 from app.sources.dorar import extract_html, parse_results, to_matches
-from tests.conftest import FIXTURES, ClientFactory, FakeLLM, FakeSource, make_match
+from app.sources.offline import OfflineSixBooksSource
+from tests.conftest import (
+    FIXTURES,
+    OFFLINE_SAMPLE,
+    ClientFactory,
+    FakeLLM,
+    FakeSource,
+    make_match,
+)
 
 NIYYAT = normalize("إنما الأعمال بالنيات وإنما لكل امرئ ما نوى")
 CHINA = normalize("اطلبوا العلم ولو في الصين")
@@ -142,33 +152,69 @@ def test_llm_may_not_complete_or_swap_the_hadith() -> None:
 # ------------------------------------------------------------------- API ----
 
 
+class RealisticDorar(FakeSource):
+    """Scores the real saved Dorar results for «إنما الأعمال بالنيات»."""
+
+    async def search(self, text: str):  # type: ignore[no-untyped-def]
+        self.calls.append(text)
+        parsed = parse_results(
+            extract_html(json.loads((FIXTURES / "dorar_niyyat.json").read_text(encoding="utf-8")))
+        )
+        return to_matches(text, parsed)
+
+
+REPORTED = "انماا لاعمال بالنيات هو دا حديث صحيح"
+
+
+def ask(client, content: str):  # type: ignore[no-untyped-def]
+    return client.post("/v1/chat", json={"messages": [{"role": "user", "content": content}]}).json()
+
+
 def test_reported_message_is_now_found(client_factory: ClientFactory) -> None:
     """«انماا لاعمال بالنيات هو دا حديث صحيح» used to return not_found."""
-    parsed = parse_results(
-        extract_html(json.loads((FIXTURES / "dorar_niyyat.json").read_text(encoding="utf-8")))
-    )
-
-    class RealisticDorar(FakeSource):
-        async def search(self, text: str):  # type: ignore[no-untyped-def]
-            self.calls.append(text)
-            return to_matches(text, parsed)
-
     source = RealisticDorar("dorar", grades_span_results=True)
-    body = (
-        client_factory([source])
-        .post(
-            "/v1/chat",
-            json={
-                "messages": [{"role": "user", "content": "انماا لاعمال بالنيات هو دا حديث صحيح"}]
-            },
-        )
-        .json()
-    )
+    body = ask(client_factory([source]), REPORTED)
     assert source.calls == ["انماا لاعمال بالنيات"]
     assert body["status"] == "found"
-    assert body["verdict_code"] == "sahih"
     assert body["best_match"]["match_score"] == 0.97
     assert "لا يطابق نص المصدر حرفاً بحرف" in body["message_ar"]
+    # Dorar alone lists gradings on both sides for this text (side chains).
+    assert body["verdict_ar"] == "مختلف فيه"
+
+
+def test_text_in_bukhari_is_sahih_even_when_dorar_lists_criticised_chains(
+    client_factory: ClientFactory,
+) -> None:
+    offline = OfflineSixBooksSource(
+        httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500))),
+        data_dir=OFFLINE_SAMPLE,
+    )
+    client = client_factory([RealisticDorar("dorar", grades_span_results=True), offline])  # type: ignore[list-item]
+    deadline = time.monotonic() + 10
+    while client.get("/health").json()["sources"]["offline"] != "ready":
+        assert time.monotonic() < deadline
+        time.sleep(0.02)
+
+    for message, score in ((REPORTED, 0.97), ("إنما الأعمال بالنيات", 1.0)):
+        body = ask(client, message)
+        best = body["best_match"]
+        assert (body["verdict_code"], body["verdict_ar"]) == ("sahih", "صحيح")
+        assert (best["source_book"], best["number_or_page"]) == ("صحيح البخاري", "1")
+        assert best["grade_text"] == "أخرجه في صحيحه"
+        assert best["match_score"] == score
+        assert body["source_used"] == "offline_six_books"
+        # Dorar's gradings are still listed, and the disagreement is mentioned.
+        assert len(best["grades"]) > 5
+        assert body["scholars_differ"] is True
+        assert "أحكام أخرى مختلفة" in body["message_ar"]
+        assert body["other_matches"][0]["muhaddith"]
+
+
+def test_typo_tolerant_tier_cannot_trigger_the_sahihayn_rule(client_factory: ClientFactory) -> None:
+    """A 0.9 (one-edit) match is not strong enough to settle the verdict."""
+    from app.services.verify import SAHIHAYN_MIN_SCORE
+
+    assert SAHIHAYN_MIN_SCORE > 0.9
 
 
 def test_exact_match_has_no_literal_warning(client_factory: ClientFactory) -> None:
@@ -197,3 +243,31 @@ def test_llm_correction_is_used_after_a_miss_and_disclosed(client_factory: Clien
     assert body["query"] == "إنما الأعمال بالنيات"
     assert "صُحِّحت كتابة النص قبل البحث" in body["message_ar"]
     assert "صُحِّحت كتابة النص قبل البحث" in body["reply_ar"]
+
+
+def test_six_books_gradings_are_added_to_dorar_results(client_factory: ClientFactory) -> None:
+    """Dorar lists only weak chains; Ibn Majah #223 is graded Sahih by Al-Albani."""
+    text = "إنما ورثوا العلم فمن أخذه أخذ بحظ وافر"
+
+    class OnlyCritics(FakeSource):
+        async def search(self, query: str):  # type: ignore[no-untyped-def]
+            self.calls.append(query)
+            return [make_match(text, "إسناده ضعيف", muhaddith="ابن القطان")]
+
+    offline = OfflineSixBooksSource(
+        httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500))),
+        data_dir=OFFLINE_SAMPLE,
+    )
+    client = client_factory([OnlyCritics("dorar", grades_span_results=True), offline])  # type: ignore[list-item]
+    deadline = time.monotonic() + 10
+    while client.get("/health").json()["sources"]["offline"] != "ready":
+        assert time.monotonic() < deadline
+        time.sleep(0.02)
+
+    body = client.post("/v1/verify", json={"text": text}).json()
+    scholars = [g["scholar"] for g in body["best_match"]["grades"]]
+    assert scholars[0] == "ابن القطان" and "الألباني" in scholars
+    assert body["verdict_ar"] == "مختلف فيه"
+    assert body["source_used"] == "dorar"
+    assert "قبِله: الألباني" in body["message_ar"]
+    assert any(m["source_book"] == "سنن ابن ماجه" for m in body["other_matches"])

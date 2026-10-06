@@ -69,7 +69,8 @@ _AR_NEGATED_AUTHENTIC = _word(
 _AR_NO_ORIGIN = _word(r"(?:و|ف)?(?:لا\s+اصل|ليس\s+(?:\S+\s+){1,2}اصل)")
 _AR_FABRICATED = _word(r"موضوع|موضوعه|مكذوب|مكذوبه|كذب|باطل|باطله|مختلق|مفتري|مصنوع", _CONJ_AL)
 _AR_WEAK = _word(
-    r"ضعيف|ضعيفه|ضعيفا|ضعفه|ضعف|منكر|منكره|شاذ|شاذه|واه|واهي|واهيه|متروك|معلول|مضطرب|لين",
+    r"ضعيف|ضعيفه|ضعيفا|ضعفه|ضعف|منكر|منكره|شاذ|شاذه|واه|واهي|واهيه|متروك|معلول|مضطرب|لين|"
+    r"مرسل|مرسله|منقطع|منقطعه|معضل",
     _CONJ_AL,
 )
 _AR_VERY = _word(r"(?:ضعيف|ضعيفه|منكر|واه|واهي|لين)(?:\s+\S+)?\s+جدا|واه|واهي|متروك", _CONJ_AL)
@@ -77,7 +78,15 @@ _AR_VERY = _word(r"(?:ضعيف|ضعيفه|منكر|واه|واهي|لين)(?:\s+
 _AR_SAHIH = _word(r"صحيح|صحيحه|صحيحا|صحاح|صححه|صح|ثابت|ثبت|علي\s+صحته|بالصحه", _CONJ)
 # "الحسن بن ..." is a narrator name; a bare "حسن" followed by "بن" is too.
 _AR_HASAN = re.compile(rf"(?<![{_L}]){_CONJ}(?:حسن|حسنه|حسنا)(?![{_L}])(?!\s+بن(?![{_L}]))")
-_AR_DOUBT = _word(r"نظر")
+_AR_DOUBT = _word(r"نظر|زعم|زعموا|يزعم")
+# Ruling words inside a person's name: "زيد بن ثابت", "ابن حسن".
+_AR_NAME = _word(r"(?:بن|ابن|ابي|ابو|ابا|ام)\s+(?:ثابت|حسن)")
+# "معناه صحيح" judges the meaning, not the attribution to the Prophet ﷺ.
+_AR_SOUND_MEANING = _word(
+    r"(?:معناه|معني(?:\s+\S+){0,3}?)\s+(?:ف|و)?(?:صحيح|صحيحا|ثابت|حسن)|صحيح\s+المعني", _CONJ
+)
+# "ليس بحديث": not a hadith at all.
+_AR_NOT_A_HADITH = _word(r"(?:ليس|ليست)\s+ب?(?:حديث|حديثا)", _CONJ)
 
 _EN_FABRICATED = re.compile(r"maudu|mawdu|mawdoo|fabricated|forged|batil")
 _EN_WEAK = re.compile(r"daif|da'if|dhaif|da`if|weak|munkar|shadh|malool")
@@ -96,6 +105,8 @@ LABEL_HASAN_SAHIH = "حسن صحيح"
 LABEL_VERY_DAIF = "ضعيف جداً"
 
 UNCLEAR = Verdict(VerdictCode.UNCLEAR, LABELS_AR[VerdictCode.UNCLEAR])
+#: Scholars are split between accepting and rejecting: no single verdict is reported.
+DISPUTED = Verdict(VerdictCode.UNCLEAR, "مختلف فيه")
 
 
 def analyze(text: str | None) -> GradeSignals:
@@ -104,6 +115,9 @@ def analyze(text: str | None) -> GradeSignals:
     ar = normalize(raw)
     en = raw.lower()
 
+    ar = _AR_SOUND_MEANING.sub(" ", _AR_NAME.sub(" ", ar))
+    not_a_hadith = bool(_AR_NOT_A_HADITH.search(ar))
+    ar = _AR_NOT_A_HADITH.sub(" ", ar)
     ambiguous = bool(_AR_NEGATED_NEGATIVE.search(ar)) or bool(_AR_DOUBT.search(ar))
     ar = _AR_NEGATED_NEGATIVE.sub(" ", ar)
     negated_authentic = bool(_AR_NEGATED_AUTHENTIC.search(ar))
@@ -115,7 +129,10 @@ def analyze(text: str | None) -> GradeSignals:
         sahih=bool(_AR_SAHIH.search(ar)) or bool(_EN_SAHIH.search(en)),
         hasan=bool(_AR_HASAN.search(ar)) or bool(_EN_HASAN.search(en)),
         weak=negated_authentic or bool(_AR_WEAK.search(ar)) or bool(_EN_WEAK.search(en)),
-        fabricated=no_origin or bool(_AR_FABRICATED.search(ar)) or bool(_EN_FABRICATED.search(en)),
+        fabricated=no_origin
+        or not_a_hadith
+        or bool(_AR_FABRICATED.search(ar))
+        or bool(_EN_FABRICATED.search(en)),
         very=bool(_AR_VERY.search(ar)) or bool(_EN_VERY.search(en)),
         ambiguous=ambiguous,
     )

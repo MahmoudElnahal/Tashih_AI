@@ -42,6 +42,12 @@ ARABIC = [
     ("لا يصح إسناده والرواية في هذا النحو فيها لين", D),
     ("ضعيف وبعضهم جعله في الموضوعات", D),
     ("[ قال الحاكم: تفرد حميد بن الربيع بهذه اللفظة] قلت: وهو واه", D),
+    ("مرسل", D),
+    ("مرسل وأما معنى هذا الحديث فصحيح في الأصول", D),  # sound meaning is not a ruling
+    ("ليس بحديث، لكن معناه صحيح", M),
+    ("ليس بحديث", M),
+    ("مرسل، وروي موصولاً", D),
+    ("هذا مرسل لا تقوم به الحجة", D),
     ("موضوع", M),  # synthetic
     ("كذب", M),
     ("باطل", M),
@@ -63,6 +69,7 @@ ARABIC_UNCLEAR = [
     "لم يرو هذا الحديث عن مسعر إلا يحيى بن هشام",
     "إسنادها جيد",
     "في صحته نظر",  # synthetic: doubt
+    "مرسل أسنده الحاكم وزعم أنه صحيح الإسناد ولم يخرجاه",  # a claim he does not endorse
     "ليس بضعيف",  # synthetic: negated weak word
     "",
     "-",
@@ -145,3 +152,17 @@ def test_verdicts_conflict() -> None:
     assert not verdicts_conflict([S, H, U])
     assert not verdicts_conflict([D, M, U])
     assert not verdicts_conflict([])
+
+
+def test_ruling_words_inside_names_are_ignored() -> None:
+    # Real Dorar text: «زيد بن ثابت» is a Companion's name, not a ruling.
+    text = "لم يرو هذا الحديث عن أبي الزناد إلا ابنه، ولا يروى عن زيد بن ثابت إلا بهذا الإسناد"
+    assert classify(text).code is U
+    assert classify("رواه ابن حسن عن أبيه").code is U
+    assert classify("حديث ثابت").code is S
+
+
+def test_sound_meaning_is_not_an_authentic_ruling() -> None:
+    assert classify("معناه صحيح").code is U
+    assert classify("صحيح المعنى").code is U
+    assert classify("ضعيف لكن معناه صحيح").code is D

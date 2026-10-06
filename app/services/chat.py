@@ -84,7 +84,8 @@ class ChatService:
             return (
                 result if guess.confident else self._static(request_id, message, MSG_OUT_OF_SCOPE)
             )
-        if normalize(extraction.hadith_text) == normalize(guess.hadith_text):
+        corrected_text = normalize(extraction.hadith_text)
+        if not corrected_text or corrected_text == normalize(guess.hadith_text):
             return result
         corrected = await self._verify.verify(
             extraction.hadith_text, max_results=3, request_id=request_id
@@ -95,6 +96,11 @@ class ChatService:
         return corrected
 
     async def _extract(self, message: str) -> Extraction | None:
+        """Validated LLM extraction, or ``None`` when there is no usable answer.
+
+        A hadith request whose corrected text fails validation comes back as
+        ``hadith_check`` with empty text: the intent is trusted, the text is not.
+        """
         if self._llm is None:
             return None
         try:
@@ -102,7 +108,13 @@ class ChatService:
         except Exception as exc:
             logger.warning("extraction failed", extra={"error": type(exc).__name__})
             return None
-        return validate_extraction(message, raw) if raw is not None else None
+        if raw is None:
+            return None
+        validated = validate_extraction(message, raw)
+        if validated is None:
+            logger.warning("extraction rejected by validator")
+            return Extraction("hadith_check", "")
+        return validated
 
     @staticmethod
     def _static(request_id: str, message: str, text: str) -> VerifyResponse:
