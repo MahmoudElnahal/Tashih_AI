@@ -7,6 +7,7 @@ import json
 import httpx
 import pytest
 
+from app.services.normalize import normalize
 from app.services.verdict import VerdictCode
 from app.sources.base import SourceBlocked, SourceUnavailable
 from app.sources.dorar import DorarSource, extract_html, parse_results, to_matches
@@ -26,7 +27,8 @@ def test_parses_all_fields_from_real_fixture() -> None:
     assert len(parsed) == 15
 
     third = parsed[2]
-    assert third.hadith_text == "إنَّما الأعمالُ بالنِّيَّاتِ"
+    assert normalize(third.hadith_text) == "انما الاعمال بالنيات"
+    assert "َ" in third.hadith_text  # tashkeel is preserved for display
     assert third.narrator == "عمر بن الخطاب"
     assert third.muhaddith == "ابن تيمية"
     assert third.source_book == "مجموع الفتاوى"
