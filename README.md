@@ -1,3 +1,24 @@
+# Tashih AI — Arabic Hadith Verification
+
+**Check a hadith before you share it.** Send the text and Tashih returns three things: the grading, who graded it, and the source.
+
+- **The verdict always comes from hadith sources, never from the language model.** The grade is computed by fixed code from the scholar's ruling.
+- If the text is not found with enough confidence, the API answers `not_found` and declines to judge — it never invents a grade, source or narrator.
+- The LLM is optional and limited to two jobs: extracting the hadith from the user's message and phrasing a plain explanation, which is checked by code and dropped if it contradicts the verdict.
+- Tolerates typos without guessing, shows every available ruling, and marks a hadith "disputed" when scholars disagree.
+- Falls back to an offline copy of the six books when the primary source is unreachable.
+
+**Stack:** FastAPI (versioned `v1` API, documented in [`docs/API.md`](docs/API.md)) · Streamlit demo UI · Docker Compose · pytest · optional OpenAI
+
+```bash
+cp .env.example .env
+docker compose up --build -d      # UI on :8501, API docs on :8000/docs
+```
+
+The full documentation below is in Arabic.
+
+---
+
 <div dir="rtl">
 
 # تصحيح — Tashih AI
